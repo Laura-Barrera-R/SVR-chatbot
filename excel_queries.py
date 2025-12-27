@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 def closed_events_oct_nov(df, show_chart=True):
     df = df.copy()
     
-    # CAMBIO CLAVE: Usar event_start_datetime en lugar de event_close_datetime
+    # Usar event_start_datetime en lugar de event_close_datetime
     fecha_col = df['event_start_datetime']
     
     # Si es numérico (formato Excel), convertir desde el origen de Excel
@@ -28,18 +28,12 @@ def closed_events_oct_nov(df, show_chart=True):
     # Filtrar octubre y noviembre
     df_filtered = df_closed[df_closed['mes'].isin([10, 11])]
     
-    # Debug para verificar
-    print("\nDEBUG - Eventos CLOSED con fecha de inicio en Oct/Nov:")
-    print(df_filtered[['event_start_datetime', 'mes', 'event_state']].to_string())
-    
     # Contar por mes
     counts = df_filtered['mes'].value_counts().sort_index()
     
     # Mapear nombres de meses
     month_map = {10: "Octubre", 11: "Noviembre"}
     counts.index = counts.index.map(lambda x: month_map.get(x, str(x)))
-    
-    print(f"\nConteo final: {counts.to_dict()}")
     
     if show_chart:
         plt.figure(figsize=(6,4))
@@ -48,6 +42,7 @@ def closed_events_oct_nov(df, show_chart=True):
         plt.ylabel('Cantidad de eventos CLOSED')
         plt.title('Eventos CLOSED en Octubre y Noviembre')
         plt.tight_layout()
+        # Guardar en el directorio actual (será charts/ desde la API)
         plt.savefig('cerrados_oct_nov.png')
         plt.close()
         return "Gráfico guardado en cerrados_oct_nov.png", counts.to_dict()
