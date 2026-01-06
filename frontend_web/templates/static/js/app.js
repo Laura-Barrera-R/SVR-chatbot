@@ -1,0 +1,1 @@
+console.log('Frontend listo - Llama a backend: http://147.224.209.193:8000');

@@ -1,30 +1,49 @@
 from excel_loader import ExcelAnalyzer
-from pdf_loader import load_pdf_text
-from memory import create_memory
 from agent import build_agent
-import tools  # <- Importa y luego asigna excel más abajo
+import tools
 
-texts = []
+print("=== Analizador IA de Excel ===\n")
 
-excel_path = input("Ruta Excel (enter para omitir): ")
-excel = None
+excel_path = input("Ruta Excel (enter para omitir): ").strip()
+
 if excel_path:
-    excel = ExcelAnalyzer(excel_path)
-    texts.append("ESQUEMA:\n" + excel.schema())
-    texts.append("MUESTRA:\n" + excel.sample())
-    tools.excel = excel  # <- Asigna la instancia al módulo tools
+    try:
+        excel = ExcelAnalyzer(excel_path)
+        tools.excel = excel  # Asigna la instancia al módulo tools
+        print(f"✅ Excel cargado: {len(excel.df)} filas\n")
+    except Exception as e:
+        print(f"❌ Error cargando Excel: {e}")
+        exit(1)
+else:
+    print("⚠️ No se cargó ningún Excel")
+    exit(0)
 
-pdf_path = input("Ruta PDF (enter para omitir): ")
-if pdf_path:
-    texts.append(load_pdf_text(pdf_path))
-
-memory = create_memory(texts)
+# Construye el agente
 agent = build_agent()
 
-print("\n🤖 IA lista para ayudarte: escribe preguntas como 'muéstrame el gráfico de eventos CLOSED en octubre y noviembre', 'dame los warning y critical en gráfico', etc.\n")
+print("\n🤖 IA lista. Ejemplos de preguntas:")
+print("  - 'muéstrame el gráfico de eventos CLOSED en octubre y noviembre'")
+print("  - 'dame los warning y critical en gráfico'")
+print("  - 'gráfico de tickets abiertos por mes'")
+print("\nEscribe 'salir' para terminar.\n")
+
 while True:
-    q = input("Tú: ")
-    if q.lower() == "salir":
+    q = input("Tú: ").strip()
+    
+    if q.lower() in ["salir", "exit", "quit"]:
+        print("👋 ¡Hasta luego!")
         break
-    res = agent.run(q)   # <-- Pasa únicamente el string de la pregunta
-    print("\n🤖 IA:", res, "\n")
+    
+    if not q:
+        continue
+    
+    try:
+        # Invoca el agente
+        result = agent.invoke({"input": q})
+        
+        # Extrae la respuesta
+        answer = result.get("output", str(result))
+        print(f"\n🤖 IA: {answer}\n")
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}\n")

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Analizador IA Excel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .section { margin: 20px 0; }
+        input[type="file"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #response { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; white-space: pre-wrap; }
+        .chart { margin: 10px 0; text-align: center; }
+        img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 5px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .loading { text-align: center; color: #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 Analizador IA de Excel con Ollama</h1>
+        <p>Carga un Excel y haz preguntas sobre los datos. Usa los endpoints de tu backend.</p>
+
+        <div class="section">
+            <h3>1. Cargar Excel</h3>
+            <form id="uploadForm">
+                <input type="file" id="fileInput" accept=".xlsx,.xls">
+                <button type="submit">Cargar Excel</button>
+            </form>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <div class="section">
+            <h3>2. Hacer Pregunta</h3>
+            <input type="text" id="questionInput" placeholder="Ej: 'muéstrame el gráfico de eventos CLOSED en octubre'" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            <label>
+                <input type="checkbox" id="asyncMode" checked=false> Modo Asíncrono
+            </label>
+            <button onclick="sendQuestion()">Enviar Pregunta</button>
+            <div id="response"></div>
+        </div>
+
+        <div class="section">
+            <h3>3. Status y Reset</h3>
+            <button onclick="checkHealth()">Ver Status</button>
+            <button onclick="resetService()">Reset Servicio</button>
+            <div id="status"></div>
+        </div>
+
+        <div id="charts"></div>
+    </div>
+
+    <script>
+        const BACKEND_URL = "http://147.224.209.193:8000";  // Tu VM backend
+
+        // Upload Excel
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                document.getElementById('uploadStatus').innerHTML = '<p class="error">Selecciona un archivo.</p>';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '<p class="loading">Subiendo...</p>';
+
+            fetch('/upload-excel', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.innerHTML = '<p class="error">Error: ' + data.error + '</p>';
+                } else {
+                    statusDiv.innerHTML = '<p class="success">✅ Cargado: ' + data.message + '<br>Filas: ' + data.rows + '<br>Columnas: ' + data.columns.join(', ') + '</p>';
+                }
+            })
+            .catch(error => {
+                statusDiv.innerHTML = '<p class="error">Error conexión: ' + error + '</p>';
+            });
+        });
+
+        // Enviar Pregunta
+        function sendQuestion() {
+            const question = document.getElementById('questionInput').value;
+            const asyncMode = document.getElementById('asyncMode').checked;
+            if (!question) {
+                document.getElementById('response').innerHTML = '<p class="error">Escribe una pregunta.</p>';
+                return;
+            }
+
+            const payload = {question: question, async_mode: asyncMode};
+
+            const responseDiv = document.getElementById('response');
+            responseDiv.innerHTML = '<p class="loading">Procesando...</p>';
+
+            fetch('/ask', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    responseDiv.innerHTML = '<p class="error">Error: ' + data.error + '</p>';
+                    document.getElementById('charts').innerHTML = '';
+                } else {
+                    responseDiv.innerHTML = '<p class="success">✅ Respuesta: ' + data.answer + '</p>';
+                    
+                    // Charts
+                    const chartsDiv = document.getElementById('charts');
+                    if (data.charts_generated && data.charts_generated.length > 0) {
+                        chartsDiv.innerHTML = '<h3>Gráficos:</h3>';
+                        data.charts_generated.forEach(chart => {
+                            const img = document.createElement('img');
+                            img.src = '/chart/' + chart + '?t=' + Date.now();  // Cache bust
+                            img.alt = chart;
+                            img.style.maxWidth = '100%';
+                            img.style.height = 'auto';
+                            img.onerror = function() {
+                                this.alt = 'Error cargando ' + chart;
+                            };
+                            chartsDiv.appendChild(img);
+                            chartsDiv.appendChild(document.createElement('br'));
+                        });
+                    } else {
+                        chartsDiv.innerHTML = '<p>No gráficos generados.</p>';
+                    }
+                }
+            })
+            .catch(error => {
+                responseDiv.innerHTML = '<p class="error">Error conexión: ' + error + '</p>';
+            });
+        }
+
+        // Status
+        function checkHealth() {
+            fetch('/health')
+            .then(response => response.json())
+            .then(data => {
+                const statusDiv = document.getElementById('status');
+                if (data.error) {
+                    statusDiv.innerHTML = '<p class="error">Status: ' + data.error + '</p>';
+                } else {
+                    statusDiv.innerHTML = '<p class="success">Status: Healthy<br>Excel: ' + (data.excel_loaded ? 'Sí' : 'No') + '<br>Agente: ' + (data.agent_ready ? 'Sí' : 'No') + '</p>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('status').innerHTML = '<p class="error">Error status: ' + error + '</p>';
+            });
+        }
+
+        // Reset
+        function resetService() {
+            fetch('/reset', {method: 'DELETE'})
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').innerHTML = '<p class="success">Reseteado: ' + data.message + '</p>';
+                document.getElementById('response').innerHTML = '';
+                document.getElementById('charts').innerHTML = '';
+            })
+            .catch(error => {
+                document.getElementById('status').innerHTML = '<p class="error">Error reset: ' + error + '</p>';
+            });
+        }
+
+        // Auto-check status al cargar
+        window.onload = function() {
+            checkHealth();
+        };
+    </script>
+</body>
+</html>

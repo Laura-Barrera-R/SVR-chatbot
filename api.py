@@ -100,21 +100,18 @@ def run_agent_query(question: str, query_id: str):
         # Cambiar directorio de trabajo
         original_dir = os.getcwd()
         os.chdir(CHARTS_DIR)
-        
         # Ejecutar agente
-        answer = agent_instance.run(question)
-        
+        result = agent_instance.invoke({"input": question})
+        answer = result["output"]
         # Volver al directorio original
         os.chdir(original_dir)
-        
         # Detectar gráficos generados
         charts = []
         chart_files = [
             "cerrados_oct_nov.png",
-            "eventos_warning_critical.png", 
+            "eventos_warning_critical.png",
             "tickets_abiertos_por_mes.png"
         ]
-        
         for chart_file in chart_files:
             chart_path = CHARTS_DIR / chart_file
             if chart_path.exists():
