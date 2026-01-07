@@ -8,6 +8,7 @@ def build_agent():
     """
     Build an agent compatible with LangChain 1.2.0
     Uses simple keyword matching to route to the right tool
+    Now returns which tool was used
     """
     llm = Ollama(model="llama3", temperature=0, base_url="http://localhost:11434")
     
@@ -57,11 +58,21 @@ def build_agent():
                 tool = self.tools_dict[tool_name]
                 try:
                     result = tool.func(question)
-                    return {"output": result}
+                    # IMPORTANTE: Retornar qué herramienta se usó
+                    return {
+                        "output": result,
+                        "tool_used": tool_name
+                    }
                 except Exception as e:
-                    return {"output": f"Error ejecutando {tool_name}: {str(e)}"}
+                    return {
+                        "output": f"Error ejecutando {tool_name}: {str(e)}",
+                        "tool_used": None
+                    }
             else:
-                return {"output": self._no_tool_response(question)}
+                return {
+                    "output": self._no_tool_response(question),
+                    "tool_used": None
+                }
         
         def run(self, question):
             """Backward compatibility method"""

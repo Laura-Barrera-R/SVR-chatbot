@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse 
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import shutil
@@ -13,6 +14,15 @@ import uuid
 from typing import Optional
 
 app = FastAPI(title="Ollama Excel Analyzer API")
+
+# Configurar CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Variables globales para mantener estado
 excel_analyzer = None
@@ -32,10 +42,17 @@ executor = ThreadPoolExecutor(max_workers=4)
 # Almacenamiento temporal de respuestas para consultas async
 pending_queries = {}
 
+# Mapeo de herramientas a nombres de archivos de gráficos
+TOOL_TO_CHART = {
+    'closed_events_oct_nov': 'cerrados_oct_nov.png',
+    'events_by_severity': 'eventos_warning_critical.png',
+    'open_tickets_by_month': 'tickets_abiertos_por_mes.png'
+}
+
 
 class QuestionRequest(BaseModel):
     question: str
-    async_mode: bool = False  # Nueva opción para modo asíncrono
+    async_mode: bool = False
 
 
 class QuestionResponse(BaseModel):
@@ -51,7 +68,7 @@ class AsyncQueryResponse(BaseModel):
 
 class QueryStatusResponse(BaseModel):
     query_id: str
-    status: str  # "pending", "completed", "error"
+    status: str
     answer: Optional[str] = None
     charts_generated: list[str] = []
     error: Optional[str] = None
@@ -68,9 +85,6 @@ async def serve_frontend():
         return HTMLResponse(content=html_path.read_text(encoding='utf-8'), status_code=200)
     return HTMLResponse(content="<h1>Frontend no encontrado. Verifica la ruta.</h1>", status_code=404)
 
-# Variables globales para mantener estado
-excel_analyzer = None
-agent_instance = None
 
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):
@@ -105,6 +119,18 @@ async def upload_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error al procesar Excel: {str(e)}")
 
 
+def get_chart_for_tool(tool_name: str) -> Optional[str]:
+    """
+    Retorna el nombre del archivo de gráfico si existe para la herramienta dada.
+    """
+    chart_filename = TOOL_TO_CHART.get(tool_name)
+    if chart_filename:
+        chart_path = CHARTS_DIR / chart_filename
+        if chart_path.exists():
+            return chart_filename
+    return None
+
+
 def run_agent_query(question: str, query_id: str):
     """
     Función que ejecuta la consulta del agente en un thread separado.
@@ -112,25 +138,22 @@ def run_agent_query(question: str, query_id: str):
     global excel_analyzer, agent_instance
     
     try:
-        # Cambiar directorio de trabajo
         original_dir = os.getcwd()
         os.chdir(CHARTS_DIR)
-        # Ejecutar agente
+        
+        # Ejecutar agente y obtener información sobre qué herramienta usó
         result = agent_instance.invoke({"input": question})
         answer = result["output"]
-        # Volver al directorio original
+        tool_used = result.get("tool_used")  # El agente debe retornar qué herramienta usó
+        
         os.chdir(original_dir)
-        # Detectar gráficos generados
+        
+        # Solo incluir el gráfico de la herramienta que se usó
         charts = []
-        chart_files = [
-            "cerrados_oct_nov.png",
-            "eventos_warning_critical.png",
-            "tickets_abiertos_por_mes.png"
-        ]
-        for chart_file in chart_files:
-            chart_path = CHARTS_DIR / chart_file
-            if chart_path.exists():
-                charts.append(chart_file)
+        if tool_used:
+            chart = get_chart_for_tool(tool_used)
+            if chart:
+                charts.append(chart)
         
         # Actualizar estado
         pending_queries[query_id] = {
@@ -161,12 +184,11 @@ async def ask_question(request: QuestionRequest):
             detail="Primero debes cargar un archivo Excel usando /upload-excel"
         )
     
-    # Modo asíncrono: devuelve ID y procesa en background
+    # Modo asíncrono
     if request.async_mode:
         query_id = str(uuid.uuid4())
         pending_queries[query_id] = {"status": "pending"}
         
-        # Ejecutar en background
         loop = asyncio.get_event_loop()
         loop.run_in_executor(executor, run_agent_query, request.question, query_id)
         
@@ -177,26 +199,24 @@ async def ask_question(request: QuestionRequest):
             "check_url": f"/query-status/{query_id}"
         }
     
-    # Modo síncrono (comportamiento original, puede dar timeout)
+    # Modo síncrono
     try:
         original_dir = os.getcwd()
         os.chdir(CHARTS_DIR)
         
-        answer = agent_instance.run(request.question)
+        # Ejecutar agente
+        result = agent_instance.invoke({"input": request.question})
+        answer = result["output"]
+        tool_used = result.get("tool_used")
         
         os.chdir(original_dir)
         
+        # Solo incluir el gráfico de la herramienta que se usó
         charts = []
-        chart_files = [
-            "cerrados_oct_nov.png",
-            "eventos_warning_critical.png", 
-            "tickets_abiertos_por_mes.png"
-        ]
-        
-        for chart_file in chart_files:
-            chart_path = CHARTS_DIR / chart_file
-            if chart_path.exists():
-                charts.append(chart_file)
+        if tool_used:
+            chart = get_chart_for_tool(tool_used)
+            if chart:
+                charts.append(chart)
         
         return QuestionResponse(
             answer=answer,
@@ -274,10 +294,17 @@ async def reset_system():
     tools.excel = None
     pending_queries.clear()
     
+    # Limpiar gráficos generados
+    for chart_file in CHARTS_DIR.glob("*.png"):
+        try:
+            chart_file.unlink()
+        except:
+            pass
+    
     return {"message": "Sistema reseteado exitosamente"}
 
 
-@app.get("/")
+@app.get("/info")
 async def root():
     """
     Endpoint raíz con información de la API.
