@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse 
 from pydantic import BaseModel
 import os
 import shutil
@@ -56,6 +56,21 @@ class QueryStatusResponse(BaseModel):
     charts_generated: list[str] = []
     error: Optional[str] = None
 
+
+# Endpoint para servir el frontend
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """
+    Sirve el frontend HTML.
+    """
+    html_path = Path("./frontend_web/templates/index.html")
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding='utf-8'), status_code=200)
+    return HTMLResponse(content="<h1>Frontend no encontrado. Verifica la ruta.</h1>", status_code=404)
+
+# Variables globales para mantener estado
+excel_analyzer = None
+agent_instance = None
 
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):

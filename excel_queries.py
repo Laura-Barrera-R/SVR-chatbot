@@ -51,19 +51,38 @@ def closed_events_oct_nov(df, show_chart=True):
     else:
         return counts.to_dict()
 
-
 def events_by_severity(df, show_chart=True):
+    """
+    Cuenta eventos ÚNICOS por severidad (WARNING y CRITICAL).
+    Usa múltiples columnas para identificar eventos únicos correctamente.
+    """
     severities = ['WARNING', 'CRITICAL']
-    mask = df['event_severity'].str.upper().isin(severities)
     
-    # Garantiza orden WARNING, CRITICAL
-    counts = df[mask]['event_severity'].str.upper().value_counts().reindex(severities, fill_value=0)
+    # Filtrar solo WARNING y CRITICAL
+    mask = df['event_severity'].str.upper().isin(severities)
+    df_filtered = df[mask].copy()
+    
+    # Normalizar la columna de severidad
+    df_filtered['severity_clean'] = df_filtered['event_severity'].str.upper()
+    
+    # IMPORTANTE: Convertir event_id a string para evitar pérdida de precisión
+    df_filtered['event_id_str'] = df_filtered['event_id'].astype(str)
+    
+    # Eliminar duplicados basados en event_id Y severity
+    # (un mismo event_id puede aparecer con WARNING y CRITICAL)
+    df_unique = df_filtered.drop_duplicates(subset=['event_id_str', 'severity_clean'])
+    
+    # Contar eventos únicos por severidad
+    counts = df_unique['severity_clean'].value_counts()
+    
+    # Garantizar orden WARNING, CRITICAL
+    counts = counts.reindex(severities, fill_value=0)
     
     if show_chart:
         plt.figure(figsize=(6,4))
         counts.plot(kind='bar', color=['#FFB347', '#FF6347'])
         plt.xlabel('Severidad')
-        plt.ylabel('Cantidad de eventos')
+        plt.ylabel('Cantidad de eventos únicos')
         plt.title('Eventos por Severidad')
         plt.tight_layout()
         plt.savefig('eventos_warning_critical.png')
