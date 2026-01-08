@@ -12,6 +12,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import uuid
 from typing import Optional
+import glob
 
 app = FastAPI(title="Ollama Excel Analyzer API")
 
@@ -42,11 +43,12 @@ executor = ThreadPoolExecutor(max_workers=4)
 # Almacenamiento temporal de respuestas para consultas async
 pending_queries = {}
 
-# Mapeo de herramientas a nombres de archivos de gráficos
-TOOL_TO_CHART = {
-    'closed_events_oct_nov': 'cerrados_oct_nov.png',
-    'events_by_severity': 'eventos_warning_critical.png',
-    'open_tickets_by_month': 'tickets_abiertos_por_mes.png'
+# Mapeo dinámico de herramientas a patrones de archivos
+TOOL_CHART_PATTERNS = {
+    'closed_events_by_month': 'cerrados_por_mes.png',
+    'events_by_severity': 'eventos_por_severidad.png',
+    'open_tickets_by_month': 'tickets_abiertos_por_mes.png',
+    'events_by_state': 'eventos_por_estado.png'
 }
 
 
@@ -109,6 +111,10 @@ async def upload_excel(file: UploadFile = File(...)):
         # Construir agente
         agent_instance = build_agent()
         
+        # Inyectar referencia al Excel en el agente
+        if hasattr(agent_instance, 'excel'):
+            agent_instance.excel = excel_analyzer
+        
         return {
             "message": "Excel cargado exitosamente",
             "filename": file.filename,
@@ -119,15 +125,15 @@ async def upload_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error al procesar Excel: {str(e)}")
 
 
-def get_chart_for_tool(tool_name: str) -> Optional[str]:
+def get_latest_chart_for_tool(tool_name: str) -> Optional[str]:
     """
-    Retorna el nombre del archivo de gráfico si existe para la herramienta dada.
+    Retorna el nombre del archivo de gráfico más reciente para la herramienta dada.
     """
-    chart_filename = TOOL_TO_CHART.get(tool_name)
-    if chart_filename:
-        chart_path = CHARTS_DIR / chart_filename
+    pattern = TOOL_CHART_PATTERNS.get(tool_name)
+    if pattern:
+        chart_path = CHARTS_DIR / pattern
         if chart_path.exists():
-            return chart_filename
+            return pattern
     return None
 
 
@@ -141,17 +147,17 @@ def run_agent_query(question: str, query_id: str):
         original_dir = os.getcwd()
         os.chdir(CHARTS_DIR)
         
-        # Ejecutar agente y obtener información sobre qué herramienta usó
+        # Ejecutar agente
         result = agent_instance.invoke({"input": question})
-        answer = result["output"]
-        tool_used = result.get("tool_used")  # El agente debe retornar qué herramienta usó
+        answer = result.get("output", "")
+        tool_used = result.get("tool_used")
         
         os.chdir(original_dir)
         
-        # Solo incluir el gráfico de la herramienta que se usó
+        # Obtener gráfico generado
         charts = []
         if tool_used:
-            chart = get_chart_for_tool(tool_used)
+            chart = get_latest_chart_for_tool(tool_used)
             if chart:
                 charts.append(chart)
         
@@ -206,15 +212,15 @@ async def ask_question(request: QuestionRequest):
         
         # Ejecutar agente
         result = agent_instance.invoke({"input": request.question})
-        answer = result["output"]
+        answer = result.get("output", "")
         tool_used = result.get("tool_used")
         
         os.chdir(original_dir)
         
-        # Solo incluir el gráfico de la herramienta que se usó
+        # Obtener gráfico generado
         charts = []
         if tool_used:
-            chart = get_chart_for_tool(tool_used)
+            chart = get_latest_chart_for_tool(tool_used)
             if chart:
                 charts.append(chart)
         
@@ -269,6 +275,15 @@ async def get_chart(chart_name: str):
     )
 
 
+@app.get("/charts/list")
+async def list_charts():
+    """
+    Endpoint para listar todos los gráficos disponibles.
+    """
+    charts = [f.name for f in CHARTS_DIR.glob("*.png")]
+    return {"charts": charts}
+
+
 @app.get("/health")
 async def health_check():
     """
@@ -278,7 +293,8 @@ async def health_check():
         "status": "healthy",
         "excel_loaded": excel_analyzer is not None,
         "agent_ready": agent_instance is not None,
-        "ollama_model": "llama3"
+        "ollama_model": "llama3",
+        "charts_available": len(list(CHARTS_DIR.glob("*.png")))
     }
 
 
@@ -311,7 +327,15 @@ async def root():
     """
     return {
         "name": "Ollama Excel Analyzer API",
-        "version": "1.0",
+        "version": "2.0",
+        "features": [
+            "Consultas flexibles con LLM",
+            "Filtrado dinámico de meses y severidades",
+            "Múltiples tipos de gráficos (barras, pastel, líneas)",
+            "Historial de gráficos en conversación",
+            "Descarga de gráficos",
+            "Memoria de conversación"
+        ],
         "endpoints": {
             "health": "GET /health",
             "upload": "POST /upload-excel",
@@ -319,6 +343,7 @@ async def root():
             "ask_async": "POST /ask (con async_mode=true)",
             "query_status": "GET /query-status/{query_id}",
             "get_chart": "GET /chart/{chart_name}",
+            "list_charts": "GET /charts/list",
             "reset": "DELETE /reset"
         }
     }
