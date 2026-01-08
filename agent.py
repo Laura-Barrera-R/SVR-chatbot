@@ -1,4 +1,4 @@
-# coding: utf-8
+# -*- coding: utf-8 -*-
 from langchain_community.llms import Ollama
 from typing import Dict, Any, List, Optional
 import json
@@ -8,14 +8,13 @@ class IntelligentExcelAgent:
     
     def __init__(self, tools_dict: Dict):
         self.llm = Ollama(
-            model="llama3", 
-            temperature=0,
+            model="llama3.2:1b", 
+            temperature=0.3,  # Un poco de creatividad para respuestas naturales
             base_url="http://localhost:11434",
-            timeout=15  # Timeout de 15 segundos
+            timeout=60
         )
         self.tools_dict = tools_dict
         self.conversation_history = []
-        self.use_llm = True  # Flag para activar/desactivar LLM
         
     def _extract_month_numbers(self, question: str) -> Optional[List[int]]:
         month_map = {
@@ -54,17 +53,68 @@ class IntelligentExcelAgent:
         
         return severities if severities else None
     
+    def _generate_natural_response(self, question: str, data: Dict, tool_name: str) -> str:
+        """
+        Genera una respuesta natural usando el LLM basandose en los datos obtenidos.
+        """
+        if not data:
+            return "No se encontraron datos para tu consulta."
+        
+        # Preparar contexto para el LLM
+        data_summary = ", ".join([f"{k}: {v}" for k, v in data.items()])
+        total = sum(data.values())
+        
+        # Prompt optimizado para respuestas rapidas y naturales
+        prompt = f"""Eres un asistente de analisis de datos. Responde de forma breve, natural y profesional.
+
+Pregunta del usuario: {question}
+
+Datos obtenidos:
+- Total: {total}
+- Detalle: {data_summary}
+
+Genera una respuesta concisa (maximo 2-3 oraciones) que:
+1. Responda directamente la pregunta
+2. Mencione el total
+3. Destaque los datos mas relevantes
+
+Respuesta:"""
+
+        try:
+            # Generar respuesta con el LLM
+            response = self.llm.invoke(prompt)
+            # Limpiar la respuesta
+            response = response.strip()
+            
+            # Si la respuesta es muy larga, truncar
+            if len(response) > 300:
+                sentences = response.split('.')
+                response = '. '.join(sentences[:2]) + '.'
+            
+            return response
+            
+        except Exception as e:
+            print(f"[ERROR] LLM fallo, usando respuesta de respaldo: {str(e)}")
+            # Respuesta de respaldo si el LLM falla
+            return self._fallback_response(data, total)
+    
+    def _fallback_response(self, data: Dict, total: int) -> str:
+        """Respuesta de respaldo si el LLM falla"""
+        details = ", ".join([f"{v} en {k}" for k, v in list(data.items())[:5]])
+        if len(data) > 5:
+            details += f" (y {len(data)-5} mas)"
+        return f"He generado el grafico. Total: {total}. Detalle: {details}."
+    
     def invoke(self, inputs: Dict[str, str]) -> Dict[str, Any]:
         question = inputs.get("input", "")
         q_lower = question.lower()
         
-        # Usar logica basada en keywords (MAS RAPIDO)
         print(f"[DEBUG] Procesando: {question}")
         
         # Detectar tipo de grafico
         chart_type = self._detect_chart_type(question)
         
-        # Detectar herramienta por keywords
+        # Detectar herramienta por keywords (esto es rapido)
         tool_name = None
         params = {}
         
@@ -120,22 +170,18 @@ class IntelligentExcelAgent:
         try:
             result_msg, data = tool.func(question, **kwargs)
             
-            # Generar respuesta simple
-            if data:
-                total = sum(data.values())
-                details = ", ".join([f"{v} en {k}" for k, v in list(data.items())[:5]])  # Max 5 items
-                if len(data) > 5:
-                    details += f" (y {len(data)-5} mas)"
-                response = f"He generado el grafico. Total: {total}. Detalle: {details}."
-            else:
-                response = result_msg
+            # Generar respuesta natural con el LLM
+            print("[DEBUG] Generando respuesta con LLM...")
+            response = self._generate_natural_response(question, data, tool_name)
+            print(f"[DEBUG] Respuesta generada: {response[:100]}...")
             
             # Guardar en historial
             self.conversation_history.append({
                 "question": question,
                 "tool": tool_name,
                 "params": params,
-                "data": data
+                "data": data,
+                "response": response
             })
             
             return {
