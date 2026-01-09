@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from typing import Optional, Dict, List, Tuple
 
 def closed_events_by_month(df, months: Optional[List[int]] = None, show_chart: bool = True, 
-                          chart_type: str = 'bar') -> Tuple[str, Dict]:
+                          chart_type: str = 'bar', colors: Optional[List[str]] = None) -> Tuple[str, Dict]:
     """
     Cuenta eventos CLOSED por mes. Flexible para cualquier mes o rango de meses.
     """
@@ -49,19 +49,27 @@ def closed_events_by_month(df, months: Optional[List[int]] = None, show_chart: b
         plt.figure(figsize=(10, 6))
         x_labels = [month_names.get(m, str(m)) for m in counts.index]
         
+        # Determinar colores
+        if colors:
+            chart_colors = colors * (len(counts) // len(colors) + 1)
+            chart_colors = chart_colors[:len(counts)]
+        else:
+            chart_colors = '#4C72B0'
+        
         if chart_type == 'pie':
-            plt.pie(counts.values, labels=x_labels, autopct='%1.1f%%', startangle=90)
+            plt.pie(counts.values, labels=x_labels, autopct='%1.1f%%', startangle=90, colors=chart_colors)
             plt.title('Distribucion de Eventos CLOSED', fontsize=14)
         elif chart_type == 'line':
+            color = colors[0] if colors else '#4C72B0'
             plt.plot(range(len(counts)), counts.values, marker='o', linewidth=2, 
-                    markersize=8, color='#4C72B0')
+                    markersize=8, color=color)
             plt.xticks(range(len(counts)), x_labels, rotation=45, ha='right')
             plt.xlabel('Mes', fontsize=12)
             plt.ylabel('Cantidad de eventos CLOSED', fontsize=12)
             plt.title('Eventos CLOSED por Mes', fontsize=14)
             plt.grid(True, alpha=0.3)
         else:  # bar por defecto
-            plt.bar(x_labels, counts.values, color='#4C72B0')
+            plt.bar(x_labels, counts.values, color=chart_colors)
             plt.xlabel('Mes', fontsize=12)
             plt.ylabel('Cantidad de eventos CLOSED', fontsize=12)
             
@@ -84,7 +92,7 @@ def closed_events_by_month(df, months: Optional[List[int]] = None, show_chart: b
 
 
 def events_by_severity(df, severities: Optional[List[str]] = None, show_chart: bool = True, 
-                       chart_type: str = 'bar') -> Tuple[str, Dict]:
+                       chart_type: str = 'bar', colors: Optional[List[str]] = None) -> Tuple[str, Dict]:
     """
     Cuenta eventos UNICOS por severidad.
     """
@@ -112,22 +120,28 @@ def events_by_severity(df, severities: Optional[List[str]] = None, show_chart: b
     if show_chart and len(counts) > 0:
         plt.figure(figsize=(8, 6))
         
-        colors = {
-            'WARNING': '#FFB347',
-            'CRITICAL': '#FF6347',
-            'MAJOR': '#FF8C00',
-            'MINOR': '#FFD700',
-            'INFO': '#87CEEB'
-        }
-        chart_colors = [colors.get(s, '#888888') for s in counts.index]
+        # Colores por defecto o personalizados
+        if colors:
+            chart_colors = colors * (len(counts) // len(colors) + 1)
+            chart_colors = chart_colors[:len(counts)]
+        else:
+            default_colors = {
+                'WARNING': '#FFB347',
+                'CRITICAL': '#FF6347',
+                'MAJOR': '#FF8C00',
+                'MINOR': '#FFD700',
+                'INFO': '#87CEEB'
+            }
+            chart_colors = [default_colors.get(s, '#888888') for s in counts.index]
         
         if chart_type == 'pie':
             plt.pie(counts.values, labels=counts.index, autopct='%1.1f%%', 
                    colors=chart_colors, startangle=90)
             plt.title('Distribucion de Eventos por Severidad', fontsize=14)
         elif chart_type == 'line':
+            color = colors[0] if colors else chart_colors[0]
             plt.plot(counts.index, counts.values, marker='o', linewidth=2, 
-                    markersize=8, color=chart_colors[0])
+                    markersize=8, color=color)
             plt.xlabel('Severidad', fontsize=12)
             plt.ylabel('Cantidad de eventos unicos', fontsize=12)
             plt.title('Eventos por Severidad', fontsize=14)
@@ -148,7 +162,7 @@ def events_by_severity(df, severities: Optional[List[str]] = None, show_chart: b
 
 
 def open_tickets_by_month(df, months: Optional[List[int]] = None, show_chart: bool = True,
-                          chart_type: str = 'bar') -> Tuple[str, Dict]:
+                          chart_type: str = 'bar', colors: Optional[List[str]] = None) -> Tuple[str, Dict]:
     """
     Cuenta eventos OPEN por mes.
     """
@@ -191,18 +205,25 @@ def open_tickets_by_month(df, months: Optional[List[int]] = None, show_chart: bo
         plt.figure(figsize=(10, 6))
         labels = [month_names.get(m, str(m)) for m in counts.index]
         
+        if colors:
+            chart_colors = colors * (len(counts) // len(colors) + 1)
+            chart_colors = chart_colors[:len(counts)]
+        else:
+            chart_colors = '#2E8B57'
+        
         if chart_type == 'pie':
-            plt.pie(counts.values, labels=labels, autopct='%1.1f%%', startangle=90)
+            plt.pie(counts.values, labels=labels, autopct='%1.1f%%', startangle=90, colors=chart_colors)
             plt.title('Distribucion de Eventos OPEN por Mes', fontsize=14)
         elif chart_type == 'line':
-            plt.plot(range(len(counts)), counts.values, marker='o', linewidth=2, markersize=8)
+            color = colors[0] if colors else '#2E8B57'
+            plt.plot(range(len(counts)), counts.values, marker='o', linewidth=2, markersize=8, color=color)
             plt.xticks(range(len(counts)), labels, rotation=45, ha='right')
             plt.xlabel('Mes', fontsize=12)
             plt.ylabel('Eventos OPEN', fontsize=12)
             plt.title('Eventos OPEN por Mes', fontsize=14)
             plt.grid(True, alpha=0.3)
         else:
-            plt.bar(range(len(counts)), counts.values, color='#2E8B57')
+            plt.bar(range(len(counts)), counts.values, color=chart_colors)
             plt.xticks(range(len(counts)), labels, rotation=45, ha='right')
             plt.xlabel('Mes', fontsize=12)
             plt.ylabel('Eventos OPEN', fontsize=12)
@@ -218,7 +239,7 @@ def open_tickets_by_month(df, months: Optional[List[int]] = None, show_chart: bo
 
 
 def events_by_state(df, states: Optional[List[str]] = None, show_chart: bool = True,
-                   chart_type: str = 'bar') -> Tuple[str, Dict]:
+                   chart_type: str = 'bar', colors: Optional[List[str]] = None) -> Tuple[str, Dict]:
     """
     Cuenta eventos por estado (OPEN, CLOSED, etc.)
     """
@@ -243,8 +264,12 @@ def events_by_state(df, states: Optional[List[str]] = None, show_chart: bool = T
     if show_chart and len(counts) > 0:
         plt.figure(figsize=(8, 6))
         
-        colors = {'OPEN': '#FF6B6B', 'CLOSED': '#4ECDC4', 'PENDING': '#FFD93D'}
-        chart_colors = [colors.get(s, '#95E1D3') for s in counts.index]
+        if colors:
+            chart_colors = colors * (len(counts) // len(colors) + 1)
+            chart_colors = chart_colors[:len(counts)]
+        else:
+            default_colors = {'OPEN': '#FF6B6B', 'CLOSED': '#4ECDC4', 'PENDING': '#FFD93D'}
+            chart_colors = [default_colors.get(s, '#95E1D3') for s in counts.index]
         
         if chart_type == 'pie':
             plt.pie(counts.values, labels=counts.index, autopct='%1.1f%%',
